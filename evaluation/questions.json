@@ -1,0 +1,50 @@
+[
+  {
+    "id": "q1",
+    "type": "in_document",
+    "question": "What is the primary benefit of Retrieval-Augmented Generation (RAG)?",
+    "expected_information": "Injects retrieved document snippets into LLM prompt context to address hallucinated facts or outdated information."
+  },
+  {
+    "id": "q2",
+    "type": "in_document",
+    "question": "Which embedding model is specified for vector representations?",
+    "expected_information": "text-embedding-3-small"
+  },
+  {
+    "id": "q3",
+    "type": "in_document",
+    "question": "How is similarity score calculated from cosine distance in ChromaDB?",
+    "expected_information": "1.0 - cosine_distance"
+  },
+  {
+    "id": "q4",
+    "type": "in_document",
+    "question": "What response is returned when the similarity score falls below the threshold?",
+    "expected_information": "Returns grounded=false response stating 'not found in the provided documents' without calling generation model."
+  },
+  {
+    "id": "q5",
+    "type": "related_unsupported",
+    "question": "What is the recommended RAM configuration for deploying ChromaDB on Render?",
+    "expected_information": "Not mentioned in the document."
+  },
+  {
+    "id": "q6",
+    "type": "related_unsupported",
+    "question": "How many worker threads does Celery use for background chunking?",
+    "expected_information": "Not mentioned in the document (out of scope)."
+  },
+  {
+    "id": "q7",
+    "type": "unrelated",
+    "question": "What is the capital city of Australia?",
+    "expected_information": "Not mentioned in the document."
+  },
+  {
+    "id": "q8",
+    "type": "unrelated",
+    "question": "How do you make a classic French omelette?",
+    "expected_information": "Not mentioned in the document."
+  }
+]

@@ -1,0 +1,42 @@
+Document Q&A RAG Architecture Technical Manual
+
+1. Introduction to Retrieval-Augmented Generation
+Retrieval-Augmented Generation (RAG) is a technique that enhances Large Language Model (LLM) responses by retrieving relevant information from an external knowledge base. In standard LLM generation, models rely solely on parameters learned during pre-training, which can lead to hallucinated facts or outdated information. RAG addresses this limitation by injecting retrieved document snippets into the LLM prompt context prior to answer generation.
+
+2. Document Ingestion and Text Extraction
+The first stage of a production RAG pipeline is document ingestion. Uploaded files, such as PDF or TXT documents, are parsed to extract raw text content. PDF documents require page-by-page text extraction while preserving structural reading order. Extracted text must be validated to ensure it is non-empty and properly UTF-8 encoded before proceeding to text chunking.
+
+3. Text Chunking Strategies and Overlap Configuration
+Raw document text is often too large to fit effectively into LLM context windows or vector embeddings. Therefore, documents are split into smaller segments called chunks using algorithms like RecursiveCharacterTextSplitter. The primary parameters governing chunking are chunk_size and chunk_overlap. Small chunks (e.g., 300 characters) provide high retrieval precision but may fragment sentences. Large chunks (e.g., 800 characters) preserve context but increase prompt token cost and may introduce irrelevant noise. An overlap setting (e.g., 10%) ensures that key phrases at chunk boundaries are not lost.
+
+4. Vector Embeddings and Persistent Storage
+Once text chunks are created, each chunk is converted into a dense vector representation using an embedding model such as text-embedding-3-small. These embeddings capture semantic meaning in a high-dimensional vector space. The embeddings, along with chunk text and metadata (document_id, filename, chunk_index), are stored in a persistent vector store like ChromaDB.
+
+5. Semantic Retrieval and Similarity Distance Metrics
+When a user submits a query, the query text is embedded using the same embedding model. ChromaDB performs a similarity search against stored chunk vectors using distance metrics such as cosine distance or Euclidean L2 distance. In ChromaDB's default cosine space, cosine distance ranges from 0.0 (identical) to 2.0 (opposite). Similarity score can be computed as (1.0 - cosine_distance), where 1.0 represents exact semantic match.
+
+6. Grounding and Similarity Threshold Guardrails
+To prevent hallucinations when answering questions unsupported by the documents, a similarity threshold is enforced. If the maximum similarity score among retrieved chunks falls below the threshold (e.g., 0.35), the system immediately skips the generation model and returns a grounded=false response stating "not found in the provided documents".
+
+7. Generation with Grounded Prompts
+When retrieved chunks meet the similarity threshold, they are formatted into a structured context block. The LLM (e.g., gpt-4o-mini) is instructed via a strict system prompt to answer the user question using exclusively the provided context. If the context does not explicitly contain the answer, the LLM is mandated to reply "not found in the provided documents".
+
+8. Metrics and Latency Observability
+A production-minded RAG service tracks performance metrics for each query request. Key timing stages include embedding_ms (latency to generate query embedding), retrieval_ms (vector store lookup duration), and generation_ms (LLM response generation latency). Total query latency total_ms is logged for observability and performance tuning.
+
+9. Security and Access Control Measures for Production Deployment
+In a production RAG service handling sensitive documents, robust security measures are mandatory. All uploaded files must be stored in an isolated, permission-restricted file system directory (e.g., DATA_PATH with 700 permissions) to prevent unauthorized access. Direct public access to storage buckets must be strictly prohibited.
+Vector database queries must be authenticated and rate-limited to prevent abuse or denial-of-service attacks. Rate limits should be enforced at the API gateway, with stricter limits for unauthenticated or newly created users.
+Sensitive system configuration, such as API keys and database credentials, must be injected exclusively via secure environment variables (e.g., .env files) and should never be hard-coded in source code or committed to version control.
+Input validation is critical to prevent injection attacks. All text inputs, including query text and filenames, must be sanitized to remove potentially harmful characters or code snippets before processing.
+For services handling highly confidential information, additional measures such as end-to-end encryption of stored document vectors and strict access controls based on user roles and permissions should be implemented. Vector database access should be audited and monitored for anomalous access patterns.
+Regular security audits and dependency scanning are essential to identify and remediate newly discovered vulnerabilities in libraries such as pypdf or chromadb.
+
+10. Performance Benchmarks and Scalability Considerations for Production Environments
+For high-throughput production environments, specific performance benchmarks should be established and continuously monitored.
+Vector embedding latency (embedding_ms) should ideally remain under 150ms per query, even during peak loads, to ensure responsive user interaction.
+Vector store retrieval (retrieval_ms) must be optimized to return results in under 80ms, achieved through appropriate collection sizing and indexing strategies.
+LLM response generation (generation_ms) is typically the most variable component; targets should be set based on the chosen model, with a hard maximum of 800ms for small updates to maintain a conversational flow.
+Total query latency (total_ms), the sum of these stages, should target an average of under 1.5 seconds.
+Scalability should be addressed through horizontal scaling of the FastAPI application instances behind a load balancer and ensuring the ChromaDB instance is deployed in a client-server mode with sufficient worker capacity.
+Periodic load testing is recommended to identify breaking points and validate performance under expected peak concurrent user loads, with results documented in a performance benchmark report.
