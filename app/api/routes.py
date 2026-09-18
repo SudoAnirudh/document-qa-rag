@@ -1,5 +1,6 @@
+import time
 from fastapi import APIRouter, File, UploadFile, HTTPException, status
-from app.models.schemas import UploadResponse, QueryRequest, QueryResponse
+from app.models.schemas import UploadResponse, QueryRequest, QueryResponse, SourceChunk
 from app.core.config import settings
 from app.core.exceptions import InvalidFileError, ExternalServiceError
 from app.core.logging import logger
@@ -9,6 +10,7 @@ from app.services.embeddings import EmbeddingService
 from app.services.vector_store import VectorStoreService
 from app.services.retrieval import RetrievalService
 from app.services.generation import GenerationService
+
 
 router = APIRouter()
 
@@ -80,24 +82,36 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 
 @router.post("/query", response_model=QueryResponse, status_code=status.HTTP_200_OK)
 async def query_document(request: QueryRequest) -> QueryResponse:
-    """Execute semantic retrieval, evaluate grounding threshold, and generate grounded answer."""
+    """Execute semantic retrieval, evaluate grounding threshold, and generate grounded answer with latency instrumentation."""
+    t_start = time.perf_counter()
+    embedding_ms = 0.0
+    retrieval_ms = 0.0
+    generation_ms = 0.0
+
     try:
-        # Step 1: Semantic Retrieval
         retriever = RetrievalService()
+        t_ret_start = time.perf_counter()
         sources = retriever.retrieve(
             question=request.question,
             document_id=request.document_id,
             top_k=request.top_k
         )
+        t_ret_end = time.perf_counter()
+        retrieval_ms = (t_ret_end - t_ret_start) * 1000.0
 
-        # Step 2: Grounding Threshold Evaluation
+
+
+        # Step 3: Grounding Threshold Evaluation
         max_score = max((s.score for s in sources), default=0.0)
         threshold = settings.DEFAULT_SIMILARITY_THRESHOLD
 
         if not sources or max_score < threshold:
+            t_end = time.perf_counter()
+            total_ms = (t_end - t_start) * 1000.0
+
             logger.info(
-                f"Query grounding threshold rejected (max_score={max_score:.4f} < threshold={threshold}). "
-                f"Skipping generation."
+                f"query_metric embedding_ms={embedding_ms:.2f} retrieval_ms={retrieval_ms:.2f} "
+                f"generation_ms={generation_ms:.2f} total_ms={total_ms:.2f} grounding_rejected=true"
             )
             return QueryResponse(
                 answer="not found in the provided documents",
@@ -105,11 +119,21 @@ async def query_document(request: QueryRequest) -> QueryResponse:
                 grounded=False
             )
 
-        # Step 3: Grounded Answer Generation
+        # Step 4: Grounded Answer Generation
         generator = GenerationService()
+        t_gen_start = time.perf_counter()
         answer = generator.generate_answer(
             question=request.question,
             context_chunks=sources
+        )
+        t_gen_end = time.perf_counter()
+        generation_ms = (t_gen_end - t_gen_start) * 1000.0
+
+        total_ms = (t_gen_end - t_start) * 1000.0
+
+        logger.info(
+            f"query_metric embedding_ms={embedding_ms:.2f} retrieval_ms={retrieval_ms:.2f} "
+            f"generation_ms={generation_ms:.2f} total_ms={total_ms:.2f} grounded=true"
         )
 
         return QueryResponse(
@@ -129,5 +153,17 @@ async def query_document(request: QueryRequest) -> QueryResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during query processing"
         )
+
+
+def retriever_result_to_source_chunk(res: dict) -> SourceChunk:
+    """Helper mapping vector store dict result to SourceChunk model."""
+    return SourceChunk(
+        document_id=res.get("document_id", ""),
+        chunk_index=res.get("chunk_index", 0),
+        text=res.get("text", ""),
+        score=res.get("score", 0.0)
+    )
+
+
 
 
