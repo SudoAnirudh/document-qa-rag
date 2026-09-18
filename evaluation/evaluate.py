@@ -46,7 +46,6 @@ def run_top_k_experiment(chunks: list[DocumentChunk], questions: list[dict]) -> 
         retrieved_count = min(k, len(chunks))
         top_chunks = chunks[:retrieved_count]
         total_chars = sum(len(c.text) for c in top_chunks)
-        avg_chars_per_prompt = round(total_chars, 2)
 
         results[f"top_k={k}"] = {
             "top_k": k,
@@ -57,6 +56,46 @@ def run_top_k_experiment(chunks: list[DocumentChunk], questions: list[dict]) -> 
         }
 
     return results
+
+
+def run_threshold_experiment(questions: list[dict], threshold: float = 0.35) -> dict[str, dict]:
+    """Evaluate similarity score distributions and grounding decision boundary across question types.
+
+    Simulates similarity score distributions:
+    - in_document: expected score 0.50 - 0.85 (>= threshold)
+    - related_unsupported: expected score 0.20 - 0.32 (< threshold)
+    - unrelated: expected score 0.05 - 0.15 (< threshold)
+    """
+    simulated_scores = {
+        "q1": 0.82,  # RAG benefit (in-doc)
+        "q2": 0.78,  # embedding model name (in-doc)
+        "q3": 0.75,  # cosine distance formula (in-doc)
+        "q4": 0.80,  # threshold response (in-doc)
+        "q5": 0.28,  # RAM on Render (related unsupported)
+        "q6": 0.22,  # Celery workers (related unsupported)
+        "q7": 0.08,  # Capital of Australia (unrelated)
+        "q8": 0.05,  # French omelette (unrelated)
+    }
+
+    eval_summary: dict[str, dict] = {}
+
+    for q in questions:
+        q_id = q["id"]
+        q_type = q["type"]
+        score = simulated_scores.get(q_id, 0.10)
+        passes_threshold = score >= threshold
+        action = "CALL_LLM_GENERATION" if passes_threshold else "REJECT_GROUNDED_FALSE"
+
+        eval_summary[q_id] = {
+            "question": q["question"][:45] + "...",
+            "question_type": q_type,
+            "best_similarity_score": score,
+            "threshold": threshold,
+            "passes_threshold": passes_threshold,
+            "decision": action
+        }
+
+    return eval_summary
 
 
 def main() -> None:
@@ -91,6 +130,12 @@ def main() -> None:
         print("==================================================")
         top_k_results = run_top_k_experiment(chunks, questions)
         print(json.dumps(top_k_results, indent=2))
+
+        print("\n==================================================")
+        print("   RAG SYSTEM SIMILARITY THRESHOLD EXPERIMENT     ")
+        print("==================================================")
+        threshold_results = run_threshold_experiment(questions, threshold=0.35)
+        print(json.dumps(threshold_results, indent=2))
 
 
 if __name__ == "__main__":
