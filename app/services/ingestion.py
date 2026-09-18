@@ -115,6 +115,8 @@ class IngestionService:
     def save_raw_file(file_bytes: bytes, document_id: str, filename: str) -> Path:
         """Save raw uploaded bytes to DATA_PATH/{document_id}_{filename}."""
         destination = Path(settings.DATA_PATH) / f"{document_id}_{filename}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(file_bytes)
         logger.info(f"Saved raw document to {destination}")
         return destination
+
