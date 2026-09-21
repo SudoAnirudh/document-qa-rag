@@ -16,9 +16,10 @@ class GenerationService:
         '"not found in the provided documents"'
     )
 
-    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None) -> None:
         self.api_key = api_key if api_key is not None else settings.OPENAI_API_KEY
         self.model = model if model is not None else settings.OPENAI_GENERATION_MODEL
+        self.base_url = base_url if base_url is not None else settings.OPENAI_BASE_URL
         self._client: OpenAI | None = None
 
     @property
@@ -26,7 +27,10 @@ class GenerationService:
         """Lazy initialization of OpenAI client."""
         if self._client is None:
             key_to_use = self.api_key or "missing_key"
-            self._client = OpenAI(api_key=key_to_use)
+            kwargs: dict[str, str] = {"api_key": key_to_use}
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            self._client = OpenAI(**kwargs)
         return self._client
 
     def generate_answer(self, question: str, context_chunks: list[SourceChunk]) -> str:

@@ -7,9 +7,10 @@ from app.core.logging import logger
 class EmbeddingService:
     """Service wrapping OpenAI text-embedding-3-small API calls with robust error handling."""
 
-    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None) -> None:
         self.api_key = api_key if api_key is not None else settings.OPENAI_API_KEY
         self.model = model if model is not None else settings.OPENAI_EMBEDDING_MODEL
+        self.base_url = base_url if base_url is not None else settings.OPENAI_BASE_URL
         self._client: OpenAI | None = None
 
     @property
@@ -17,7 +18,10 @@ class EmbeddingService:
         """Lazy initialization of OpenAI client."""
         if self._client is None:
             key_to_use = self.api_key or "missing_key"
-            self._client = OpenAI(api_key=key_to_use)
+            kwargs: dict[str, str] = {"api_key": key_to_use}
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            self._client = OpenAI(**kwargs)
         return self._client
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -42,8 +46,15 @@ class EmbeddingService:
             )
             return [data.embedding for data in response.data]
         except (APITimeoutError, RateLimitError, APIConnectionError, APIError) as e:
-            logger.error(f"OpenAI embedding API error ({type(e).__name__}): {e}")
-            raise ExternalServiceError("Embedding service temporarily unavailable") from e
+            logger.warning(f"Embedding API error ({type(e).__name__}): {e}. Falling back to local ONNX embeddings.")
+            try:
+                from chromadb.utils import embedding_functions
+                fn = embedding_functions.DefaultEmbeddingFunction()
+                raw_embeds = fn(texts)
+                return [[float(x) for x in emb] for emb in raw_embeds]
+            except Exception as fallback_err:
+                logger.error(f"Local embedding fallback failed: {fallback_err}")
+                raise ExternalServiceError("Embedding service temporarily unavailable") from e
         except Exception as e:
             logger.error(f"Unexpected error in EmbeddingService: {e}")
             raise ExternalServiceError("Embedding service temporarily unavailable") from e

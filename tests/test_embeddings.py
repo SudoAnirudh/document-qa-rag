@@ -47,18 +47,19 @@ def test_embed_empty_input() -> None:
 
 
 def test_embed_timeout_raises_external_service_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify APITimeoutError is caught and converted to ExternalServiceError."""
+    """Verify APITimeoutError is caught and converted to ExternalServiceError when fallback fails."""
     service = EmbeddingService(api_key="test-key")
 
     mock_create = MagicMock(side_effect=APITimeoutError(request=MagicMock()))
     monkeypatch.setattr(service.client.embeddings, "create", mock_create)
+    monkeypatch.setattr("chromadb.utils.embedding_functions.DefaultEmbeddingFunction", MagicMock(side_effect=Exception("Fallback unavailable")))
 
     with pytest.raises(ExternalServiceError, match="Embedding service temporarily unavailable"):
         service.embed_documents(["test text"])
 
 
 def test_embed_rate_limit_raises_external_service_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify RateLimitError is caught and converted to ExternalServiceError."""
+    """Verify RateLimitError is caught and converted to ExternalServiceError when fallback fails."""
     service = EmbeddingService(api_key="test-key")
 
     mock_create = MagicMock(side_effect=RateLimitError(
@@ -67,13 +68,14 @@ def test_embed_rate_limit_raises_external_service_error(monkeypatch: pytest.Monk
         body={}
     ))
     monkeypatch.setattr(service.client.embeddings, "create", mock_create)
+    monkeypatch.setattr("chromadb.utils.embedding_functions.DefaultEmbeddingFunction", MagicMock(side_effect=Exception("Fallback unavailable")))
 
     with pytest.raises(ExternalServiceError, match="Embedding service temporarily unavailable"):
         service.embed_documents(["test text"])
 
 
 def test_embed_api_error_raises_external_service_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify general APIError is caught and converted to ExternalServiceError."""
+    """Verify general APIError is caught and converted to ExternalServiceError when fallback fails."""
     service = EmbeddingService(api_key="test-key")
 
     mock_create = MagicMock(side_effect=APIError(
@@ -82,6 +84,7 @@ def test_embed_api_error_raises_external_service_error(monkeypatch: pytest.Monke
         body={}
     ))
     monkeypatch.setattr(service.client.embeddings, "create", mock_create)
+    monkeypatch.setattr("chromadb.utils.embedding_functions.DefaultEmbeddingFunction", MagicMock(side_effect=Exception("Fallback unavailable")))
 
     with pytest.raises(ExternalServiceError, match="Embedding service temporarily unavailable"):
         service.embed_query("sample question")

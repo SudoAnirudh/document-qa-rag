@@ -74,7 +74,7 @@ class VectorStoreService:
             List of result dicts sorted by similarity score descending:
             [{"document_id": ..., "chunk_index": ..., "text": ..., "score": ...}]
         """
-        if not query_embedding:
+        if query_embedding is None or len(query_embedding) == 0:
             return []
 
         collection = self.get_collection()
@@ -106,18 +106,18 @@ class VectorStoreService:
 
         for idx in range(len(ids_list)):
             meta = metadatas_list[idx] if idx < len(metadatas_list) else {}
-            dist = distances_list[idx] if idx < len(distances_list) else 1.0
+            dist_val = float(distances_list[idx]) if idx < len(distances_list) else 1.0
             doc_text = documents_list[idx] if idx < len(documents_list) else ""
 
             # In Chroma cosine space, similarity score = 1.0 - cosine_distance
-            similarity = round(max(0.0, min(1.0, 1.0 - dist)), 4)
+            similarity = round(max(0.0, min(1.0, 1.0 - dist_val)), 4)
 
             retrieved.append({
                 "document_id": meta.get("document_id", ""),
                 "chunk_index": meta.get("chunk_index", 0),
                 "text": doc_text,
                 "score": similarity,
-                "raw_distance": dist
+                "raw_distance": dist_val
             })
 
         retrieved.sort(key=lambda x: x["score"], reverse=True)

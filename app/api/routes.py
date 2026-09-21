@@ -102,7 +102,7 @@ async def query_document(request: QueryRequest) -> QueryResponse:
 
 
         # Step 3: Grounding Threshold Evaluation
-        max_score = max((s.score for s in sources), default=0.0)
+        max_score = max((float(s.score) for s in sources), default=0.0)
         threshold = settings.DEFAULT_SIMILARITY_THRESHOLD
 
         if not sources or max_score < threshold:
