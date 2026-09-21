@@ -138,13 +138,13 @@ flowchart TD
 
 ## Code Component Breakdown
 
-### 1. Ingestion Service ([ingestion.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/ingestion.py))
+### 1. Ingestion Service ([app/services/ingestion.py](../app/services/ingestion.py))
 - **File Validation (`validate_file`)**: Checks extension against `{".pdf", ".txt"}` and ensures byte length > 0.
 - **TXT Parsing (`parse_txt`)**: Decodes raw bytes as UTF-8, throwing `InvalidFileError` on encoding failure or empty content.
 - **PDF Parsing (`parse_pdf`)**: Iterates page-by-page over `pypdf.PdfReader` pages. Extracts text per page, clean-strips whitespace, and constructs page-level metadata (`[{"page_number": 1, "text": "..."}]`). Raises `InvalidFileError` if no extractable text exists (e.g. scanned image-only PDFs).
 - **UUID & Raw Storage (`save_raw_file`)**: Generates a 32-character hexadecimal UUID (`uuid.uuid4().hex`) and writes raw file bytes to `./data/{document_id}_{filename}`.
 
-### 2. Chunking Service ([chunking.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/chunking.py))
+### 2. Chunking Service ([app/services/chunking.py](../app/services/chunking.py))
 - **Algorithm**: Wraps `langchain_text_splitters.RecursiveCharacterTextSplitter`.
 - **Separators**: Priority order `["\n\n", "\n", " ", ""]` to split cleanly along double linebreaks, single linebreaks, word boundaries, and character boundaries.
 - **`DocumentChunk` Dataclass**: Captures `document_id`, `filename`, `chunk_index`, `text`, and metadata dictionary (`{"document_id": ..., "filename": ..., "chunk_index": ..., "page_number": ...}`).
@@ -158,12 +158,12 @@ Comparative evaluation executed on sample technical documentation (1,200 words):
 | **Config B (CHOSEN)** | **500 / 50** | **19** | **345.05** | **112 / 498** | **Optimal trade-off. Preserves full conceptual thoughts with minimal vector index footprint.** |
 | **Config C** | 800 / 80 | 12 | 538.83 | 210 / 795 | Broader chunks introduce background noise into vector similarity matching and inflate prompt token count. |
 
-### 3. Embedding Service ([embeddings.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/embeddings.py))
+### 3. Embedding Service ([app/services/embeddings.py](../app/services/embeddings.py))
 - **Model**: OpenAI `text-embedding-3-small` (1536 output dimensions).
 - **Lazy Initialization**: Initializes `openai.OpenAI` client upon first request.
 - **Error Mapping**: Catches `APITimeoutError`, `RateLimitError`, `APIConnectionError`, and `APIError`, wrapping them into custom `ExternalServiceError` (`HTTP 502 Bad Gateway`).
 
-### 4. Vector Store Service ([vector_store.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/vector_store.py))
+### 4. Vector Store Service ([app/services/vector_store.py](../app/services/vector_store.py))
 - **Backend**: ChromaDB `PersistentClient` targeting `./chroma_db`.
 - **Collection**: `document_qa_collection` configured with HNSW Cosine space metadata (`{"hnsw:space": "cosine"}`).
 - **Vector ID Structure**: Format `{document_id}:{chunk_index}` (e.g., `a1b2c3d4...:0`).
@@ -172,7 +172,7 @@ Comparative evaluation executed on sample technical documentation (1,200 words):
   $$\text{Score} = \max\left(0.0, \min\left(1.0, 1.0 - d\right)\right)$$
 - **Filtered Querying**: Supports document-scoped queries via Chroma's `where={"document_id": document_id}` metadata filter.
 
-### 5. Retrieval & Grounding Service ([retrieval.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/retrieval.py))
+### 5. Retrieval & Grounding Service ([app/services/retrieval.py](../app/services/retrieval.py))
 - Generates query embedding vector via `EmbeddingService.embed_query`.
 - Queries `VectorStoreService.query_similarity` for top $K$ chunks.
 - Maps results into Pydantic `SourceChunk` models containing `document_id`, `chunk_index`, `text`, and `score`.
@@ -205,7 +205,7 @@ if not sources or max_score < 0.35:
 | **Related Unsupported** | *"What is the RAM limit on Render?"* | `0.22` - `0.28` | **Rejects Gate** $\rightarrow$ Returns `"not found..."` (`grounded=False`) |
 | **Completely Unrelated** | *"What is the capital of Australia?"* | `0.05` - `0.08` | **Rejects Gate** $\rightarrow$ Returns `"not found..."` (`grounded=False`) |
 
-### 6. Generation Service ([generation.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/services/generation.py))
+### 6. Generation Service ([app/services/generation.py](../app/services/generation.py))
 - **Model**: OpenAI `gpt-4o-mini`.
 - **Temperature**: `0.0` (Ensures maximum output determinism).
 - **System Prompt Guardrail**:
@@ -221,14 +221,14 @@ if not sources or max_score < 0.35:
 
 ## Error Handling & Exception Architecture
 
-### Exception Hierarchy ([exceptions.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/core/exceptions.py))
+### Exception Hierarchy ([app/core/exceptions.py](../app/core/exceptions.py))
 ```text
 RAGException (Base Exception)
  ├── InvalidFileError (HTTP 400 Bad Request)
  └── ExternalServiceError (HTTP 502 Bad Gateway)
 ```
 
-### Exception Handlers ([main.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/app/main.py))
+### Exception Handlers ([app/main.py](../app/main.py))
 FastAPI exception handlers convert domain exceptions into structured JSON HTTP error responses:
 
 ```python
@@ -251,10 +251,10 @@ async def external_service_exception_handler(request: Request, exc: ExternalServ
 
 | # | Observed Failure | Root Cause | Engineering Remediation | Verification Status |
 |---|---|---|---|---|
-| **1** | Empty text string from PDF upload | Corrupt or scanned image-only PDF parsed by `pypdf` | Validation in `IngestionService.parse_pdf` checking `full_text.strip()`. Throws `InvalidFileError("PDF file contains no extractable text.")` mapped to HTTP 400. | **Verified** ([test_upload.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/tests/test_upload.py)) |
-| **2** | False grounding rejection on relevant queries | Raw Chroma cosine distance (`0.18`) compared directly to similarity threshold | Inverted distance score in `VectorStoreService`: `score = max(0.0, min(1.0, 1.0 - raw_dist))` guaranteeing normalized $[0.0, 1.0]$ score. | **Verified** ([test_vector_store.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/tests/test_vector_store.py)) |
-| **3** | Unhandled HTTP 500 on OpenAI API timeouts | Network glitches or OpenAI rate limits | Wrapped embedding and generation API calls with `try...except (APITimeoutError, RateLimitError, APIError)` converting to `ExternalServiceError` (HTTP 502). | **Verified** ([test_error_handling.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/tests/test_error_handling.py)) |
-| **4** | Missing filename upload crash | Upload requests missing `filename` attribute | Route-level guard in `POST /upload` returning `HTTP 400 Bad Request` if `filename` is empty. | **Verified** ([test_upload.py](file:///home/anirudhs/Documents/Banano_Techonolgies/TASK%201/document-qa-rag/tests/test_upload.py)) |
+| **1** | Empty text string from PDF upload | Corrupt or scanned image-only PDF parsed by `pypdf` | Validation in `IngestionService.parse_pdf` checking `full_text.strip()`. Throws `InvalidFileError("PDF file contains no extractable text.")` mapped to HTTP 400. | **Verified** ([tests/test_upload.py](../tests/test_upload.py)) |
+| **2** | False grounding rejection on relevant queries | Raw Chroma cosine distance (`0.18`) compared directly to similarity threshold | Inverted distance score in `VectorStoreService`: `score = max(0.0, min(1.0, 1.0 - raw_dist))` guaranteeing normalized $[0.0, 1.0]$ score. | **Verified** ([tests/test_vector_store.py](../tests/test_vector_store.py)) |
+| **3** | Unhandled HTTP 500 on OpenAI API timeouts | Network glitches or OpenAI rate limits | Wrapped embedding and generation API calls with `try...except (APITimeoutError, RateLimitError, APIError)` converting to `ExternalServiceError` (HTTP 502). | **Verified** ([tests/test_error_handling.py](../tests/test_error_handling.py)) |
+| **4** | Missing filename upload crash | Upload requests missing `filename` attribute | Route-level guard in `POST /upload` returning `HTTP 400 Bad Request` if `filename` is empty. | **Verified** ([tests/test_upload.py](../tests/test_upload.py)) |
 
 ---
 
