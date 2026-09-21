@@ -50,3 +50,7 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+
+# Docs
+explanation.md
+video_script.md
