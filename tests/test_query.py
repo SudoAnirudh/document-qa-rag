@@ -116,3 +116,28 @@ def test_query_external_service_failure(monkeypatch: pytest.MonkeyPatch) -> None
     response = client.post("/query", json=payload)
     assert response.status_code == 502
     assert "Embedding service temporarily unavailable" in response.json()["detail"]
+
+
+def test_query_unsupported_answer_from_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify POST /query returns grounded=False when generator returns 'not found in the provided documents' despite retrieved sources."""
+    mock_sources = [
+        SourceChunk(
+            document_id="doc_123",
+            chunk_index=0,
+            text="General background about company history.",
+            score=0.45  # Above 0.35 threshold
+        )
+    ]
+
+    monkeypatch.setattr("app.services.retrieval.RetrievalService.retrieve", MagicMock(return_value=mock_sources))
+    monkeypatch.setattr("app.services.generation.GenerationService.generate_answer", MagicMock(return_value="not found in the provided documents"))
+
+    payload = {"question": "What is the secret key?"}
+    response = client.post("/query", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grounded"] is False
+    assert data["answer"] == "not found in the provided documents"
+    assert data["sources"] == []
+

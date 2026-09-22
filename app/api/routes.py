@@ -131,15 +131,17 @@ async def query_document(request: QueryRequest) -> QueryResponse:
 
         total_ms = (t_gen_end - t_start) * 1000.0
 
+        is_grounded = answer.strip().lower() != "not found in the provided documents"
+
         logger.info(
             f"query_metric embedding_ms={embedding_ms:.2f} retrieval_ms={retrieval_ms:.2f} "
-            f"generation_ms={generation_ms:.2f} total_ms={total_ms:.2f} grounded=true"
+            f"generation_ms={generation_ms:.2f} total_ms={total_ms:.2f} grounded={'true' if is_grounded else 'false'}"
         )
 
         return QueryResponse(
             answer=answer,
-            sources=sources,
-            grounded=True
+            sources=sources if is_grounded else [],
+            grounded=is_grounded
         )
 
     except ExternalServiceError as e:
