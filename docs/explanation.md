@@ -16,7 +16,7 @@ We empirically evaluated three text chunking configurations on technical documen
 
 ## 3. Metric Tracked: Per-Stage Latency Breakdown & Grounding Short-Circuiting
 - **Metric**: Instrument microsecond latency metrics (`embedding_ms`, `retrieval_ms`, `generation_ms`, `total_ms`) in structured logs (`query_metric`).
-- **Insights & Findings**: For grounded queries passing the similarity threshold (`score >= 0.35`), LLM generation (`gpt-4o-mini`) dominated overall latency ($\text{generation\_ms} \approx 310\text{ms}$ vs $\text{retrieval\_ms} \approx 85\text{ms}$, total $\approx 438\text{ms}$). When queries failed the threshold (unsupported/off-topic), the grounding guardrail short-circuited execution ($\text{generation\_ms} = 0.00\text{ms}$), reducing end-to-end request latency from **438ms to 119ms** (a **73% latency reduction**) while completely eliminating LLM token costs.
+- **Insights & Findings**: For grounded queries passing the similarity threshold (`score >= 0.35`), LLM generation (`meta/llama-3.2-11b-vision-instruct` via NVIDIA NIM) dominated overall latency ($\text{generation\_ms} \approx 310\text{ms}$ vs $\text{retrieval\_ms} \approx 85\text{ms}$, total $\approx 438\text{ms}$). When queries failed the threshold (unsupported/off-topic), the grounding guardrail short-circuited execution ($\text{generation\_ms} = 0.00\text{ms}$), reducing end-to-end request latency from **438ms to 119ms** (a **73% latency reduction**) while completely eliminating LLM token costs.
 
 ## 4. Unfinished Work & Next Steps
 - **Unfinished**: Synchronous PDF parsing and embedding during `POST /upload` blocks HTTP request threads during heavy file uploads.

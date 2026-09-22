@@ -1,6 +1,6 @@
 # Document Q&A RAG Service (`document-qa-rag`)
 
-A production-minded, lightweight, well-structured Document Q&A Retrieval-Augmented Generation (RAG) backend service built with Python 3.12 and FastAPI.
+A production-minded, lightweight, well-structured Document Q&A Retrieval-Augmented Generation (RAG) backend service built with Python 3.12, FastAPI, ChromaDB, and NVIDIA NIM AI Models.
 
 ---
 
@@ -14,7 +14,7 @@ flowchart TD
     subgraph Ingestion Pipeline
         UploadRoute --> Parser[IngestionService / PyPDF & UTF-8]
         Parser --> Chunker[ChunkingService / RecursiveTextSplitter]
-        Chunker --> Embedder[EmbeddingService / text-embedding-3-small]
+        Chunker --> Embedder[EmbeddingService / nvidia/llama-3.2-nv-embedqa-1b-v2]
         Embedder --> VectorDB[(VectorStoreService / ChromaDB Persistent)]
     end
 
@@ -23,7 +23,7 @@ flowchart TD
         Retriever --> VectorDB
         Retriever --> ThresholdEvaluator{Similarity >= 0.35?}
         ThresholdEvaluator -->|No| Reject[Grounding Decision: FALSE\n"not found in the provided documents"]
-        ThresholdEvaluator -->|Yes| Generator[GenerationService / gpt-4o-mini]
+        ThresholdEvaluator -->|Yes| Generator[GenerationService / meta/llama-3.2-11b-vision-instruct]
         Generator --> Accept[Grounding Decision: TRUE\nGrounded Answer + Sources]
     end
 ```
@@ -37,8 +37,9 @@ flowchart TD
 - **Parser**: `pypdf` (PDF extraction) & UTF-8 text decoder
 - **Chunker**: `RecursiveCharacterTextSplitter` from `langchain-text-splitters` (used strictly as an isolated text processing utility)
 - **Vector Database**: `chromadb` (`PersistentClient` with cosine metric space)
-- **Embeddings**: OpenAI `text-embedding-3-small` (1536-dim)
-- **LLM Generator**: OpenAI `gpt-4o-mini` (system prompt strictly forcing document grounding)
+- **Embeddings**: NVIDIA NIM API `nvidia/llama-3.2-nv-embedqa-1b-v2` (with automatic local ONNX fallback)
+- **LLM Generator**: NVIDIA NIM API `meta/llama-3.2-11b-vision-instruct` (system prompt strictly forcing document grounding)
+- **API Interface**: OpenAI-compatible client endpoint (`https://integrate.api.nvidia.com/v1`)
 - **Testing**: `pytest` + `httpx` (51 unit and integration tests passing)
 
 ---
@@ -64,23 +65,30 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```ini
-APP_NAME=document-qa-rag
-ENVIRONMENT=development
-OPENAI_API_KEY=your_openai_api_key_here
-DEFAULT_EMBEDDING_MODEL=text-embedding-3-small
-DEFAULT_LLM_MODEL=gpt-4o-mini
-DEFAULT_SIMILARITY_THRESHOLD=0.35
+# NVIDIA NIM API Credentials (OpenAI-compatible)
+OPENAI_API_KEY=nvapi-your-nvidia-api-key
+OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1
+OPENAI_EMBEDDING_MODEL=nvidia/llama-3.2-nv-embedqa-1b-v2
+OPENAI_GENERATION_MODEL=meta/llama-3.2-11b-vision-instruct
+
+# Path Configurations
+CHROMA_PATH=./chroma_db
+DATA_PATH=./data
+
+# RAG System Default Parameters
+DEFAULT_CHUNK_SIZE=500
+DEFAULT_CHUNK_OVERLAP=50
 DEFAULT_TOP_K=5
-CHROMA_PERSIST_DIRECTORY=./data/chroma_db
+DEFAULT_SIMILARITY_THRESHOLD=0.35
 ```
 
 ### 3. Running the Server
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8002
 ```
 
-Access API Docs (Swagger UI): `http://localhost:8000/docs`
+Access API Docs (Swagger UI): `http://localhost:8002/docs`
 
 ---
 
@@ -106,9 +114,7 @@ Health check endpoint verifying API availability.
 **Response (200 OK):**
 ```json
 {
-  "status": "healthy",
-  "app_name": "document-qa-rag",
-  "environment": "development"
+  "status": "ok"
 }
 ```
 
@@ -177,7 +183,7 @@ Execute semantic search, apply similarity threshold evaluation, and return a gro
 2. **Top-K Retrieval Evaluation**:
    - `top_k=5` selected (1.67x bloat factor, ~265 tokens), offering optimal context coverage without prompt bloat.
 3. **Grounding Threshold Selection**:
-   - `threshold=0.35` selected: In-doc scores (0.75 - 0.82) trigger LLM generation; unsupported scores (0.05 - 0.28) trigger halluncination shield rejection.
+   - `threshold=0.35` selected: In-doc scores (0.75 - 0.82) trigger LLM generation; unsupported scores (0.05 - 0.28) trigger hallucination shield rejection.
 
 ---
 
