@@ -125,7 +125,7 @@ def test_query_unsupported_answer_from_generator(monkeypatch: pytest.MonkeyPatch
             document_id="doc_123",
             chunk_index=0,
             text="General background about company history.",
-            score=0.45  # Above 0.35 threshold
+            score=0.65  # Above 0.50 threshold
         )
     ]
 

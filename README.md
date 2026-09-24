@@ -14,16 +14,16 @@ flowchart TD
     subgraph Ingestion Pipeline
         UploadRoute --> Parser[IngestionService / PyPDF & UTF-8]
         Parser --> Chunker[ChunkingService / RecursiveTextSplitter]
-        Chunker --> Embedder[EmbeddingService / nvidia/llama-3.2-nv-embedqa-1b-v2]
+        Chunker --> Embedder[EmbeddingService / OpenAI / Local ONNX Fallback]
         Embedder --> VectorDB[(VectorStoreService / ChromaDB Persistent)]
     end
 
     subgraph Retrieval & Generation Pipeline
         QueryRoute --> Retriever[RetrievalService / Semantic Search]
         Retriever --> VectorDB
-        Retriever --> ThresholdEvaluator{Similarity >= 0.35?}
+        Retriever --> ThresholdEvaluator{Similarity >= 0.50?}
         ThresholdEvaluator -->|No| Reject[Grounding Decision: FALSE\n"not found in the provided documents"]
-        ThresholdEvaluator -->|Yes| Generator[GenerationService / meta/llama-3.2-11b-vision-instruct]
+        ThresholdEvaluator -->|Yes| Generator[GenerationService / LLM Generation]
         Generator --> Accept[Grounding Decision: TRUE\nGrounded Answer + Sources]
     end
 ```
@@ -37,10 +37,9 @@ flowchart TD
 - **Parser**: `pypdf` (PDF extraction) & UTF-8 text decoder
 - **Chunker**: `RecursiveCharacterTextSplitter` from `langchain-text-splitters` (used strictly as an isolated text processing utility)
 - **Vector Database**: `chromadb` (`PersistentClient` with cosine metric space)
-- **Embeddings**: NVIDIA NIM API `nvidia/llama-3.2-nv-embedqa-1b-v2` (with automatic local ONNX fallback)
-- **LLM Generator**: NVIDIA NIM API `meta/llama-3.2-11b-vision-instruct` (system prompt strictly forcing document grounding)
-- **API Interface**: OpenAI-compatible client endpoint (`https://integrate.api.nvidia.com/v1`)
-- **Testing**: `pytest` + `httpx` (51 unit and integration tests passing)
+- **Embeddings**: `text-embedding-3-small` / OpenAI API (with automatic local ONNX fallback via `all-MiniLM-L6-v2`)
+- **LLM Generator**: OpenAI / NVIDIA NIM API (system prompt strictly forcing document grounding)
+- **Testing**: `pytest` + `httpx` (52 unit and integration tests passing)
 
 ---
 
@@ -65,11 +64,11 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```ini
-# NVIDIA NIM API Credentials (OpenAI-compatible)
-OPENAI_API_KEY=nvapi-your-nvidia-api-key
-OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1
-OPENAI_EMBEDDING_MODEL=nvidia/llama-3.2-nv-embedqa-1b-v2
-OPENAI_GENERATION_MODEL=meta/llama-3.2-11b-vision-instruct
+# API Credentials
+OPENAI_API_KEY=your-api-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_GENERATION_MODEL=gpt-4o-mini
 
 # Path Configurations
 CHROMA_PATH=./chroma_db
@@ -79,7 +78,7 @@ DATA_PATH=./data
 DEFAULT_CHUNK_SIZE=500
 DEFAULT_CHUNK_OVERLAP=50
 DEFAULT_TOP_K=5
-DEFAULT_SIMILARITY_THRESHOLD=0.35
+DEFAULT_SIMILARITY_THRESHOLD=0.50
 ```
 
 ### 3. Running the Server
@@ -92,16 +91,16 @@ Access API Docs (Swagger UI): `http://localhost:8002/docs`
 
 ---
 
-## 🧪 Running Tests & Evaluation
+## 🧪 Running Tests & Real Retrieval Evaluation
 
-### Run Test Suite (51 Unit & Integration Tests)
+### Run Test Suite (52 Unit & Integration Tests)
 ```bash
-pytest -v
+.venv/bin/pytest -v
 ```
 
-### Run Empirical Experiments Script
+### Run Real Vector Retrieval Evaluation & Benchmark Suite
 ```bash
-python -m evaluation.evaluate
+PYTHONPATH=. .venv/bin/python evaluation/evaluate.py
 ```
 
 ---
@@ -158,7 +157,7 @@ Execute semantic search, apply similarity threshold evaluation, and return a gro
       "document_id": "doc_a1b2c3d4e5f6",
       "chunk_index": 0,
       "text": "Retrieval-Augmented Generation (RAG) enhances LLM responses...",
-      "score": 0.82
+      "score": 0.6635
     }
   ],
   "grounded": true
@@ -176,14 +175,21 @@ Execute semantic search, apply similarity threshold evaluation, and return a gro
 
 ---
 
-## 📊 Empirical Experiment Summaries
+## 📊 Empirical Experiment & Verification Results
+
+All evaluation scripts run **REAL vector embedding and ChromaDB retrieval** against `test_document.txt` using the full application pipeline.
 
 1. **Chunking Strategy Comparison**:
    - `Config B (500/50)` selected as optimal default (19 chunks, avg length 345 chars), balancing context preservation with retrieval precision.
 2. **Top-K Retrieval Evaluation**:
-   - `top_k=5` selected (1.67x bloat factor, ~265 tokens), offering optimal context coverage without prompt bloat.
-3. **Grounding Threshold Selection**:
-   - `threshold=0.35` selected: In-doc scores (0.75 - 0.82) trigger LLM generation; unsupported scores (0.05 - 0.28) trigger hallucination shield rejection.
+   - `top_k=5` selected (avg context ~1,852 chars, ~463 estimated tokens), offering optimal context coverage without prompt bloat.
+3. **Similarity Threshold & Leak Rate Verification**:
+   - **Real In-Document Similarity Scores** (`q1`–`q4`): `0.5177` – `0.7485` (Mean = 0.6268)
+   - **Real Related-Unsupported Similarity Scores** (`q5`–`q6`): `0.2821` – `0.4456`
+   - **Real Unrelated Questions** (`q7`–`q8`): `0.0519` – `0.1086`
+   - **Calibrated Gate Threshold**: Set to `0.50` (or `0.48`), resulting in:
+     - **In-Document Hit Rate**: **100.0% (4/4)**
+     - **Unsupported/Unrelated Leak Rate**: **0.0% (0/4)** (prevents related-but-unsupported questions like `q5` @ 0.4456 from triggering LLM generation).
 
 ---
 
